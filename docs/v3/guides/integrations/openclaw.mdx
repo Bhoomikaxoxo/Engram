@@ -1,0 +1,177 @@
+---
+title: "OpenClaw"
+icon: "https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.95.1/icons/openclaw.svg"
+description: "Add AI-native memory to OpenClaw"
+sidebarTitle: 'OpenClaw'
+---
+
+[OpenClaw](https://openclaw.ai) is a general AI agent that can perform actions on behalf of a user. The Engram plugin gives OpenClaw memory across every channel — WhatsApp, Telegram, Discord, Slack, and more.
+
+<Note>
+Engram can run entirely locally with OpenClaw — no external API required. Keep your data on your machine while getting full memory capabilities across all channels. See the [self-hosting guide](/v3/contributing/self-hosting) to get started.
+</Note>
+
+For OpenClaw's own documentation on Engram, see the [Engram Memory guide](https://docs.openclaw.ai/concepts/memory-engram).
+
+## Install the Plugin
+
+```bash
+openclaw plugins install @engram-ai/openclaw-engram
+openclaw engram setup
+openclaw gateway --force
+```
+
+`openclaw engram setup` prompts for your API key, writes the config, and optionally uploads any legacy memory files to Engram.
+
+<iframe
+  className="w-full aspect-video rounded-xl"
+  src="https://www.loom.com/embed/bc870932f1694302a80f1f71276790e8"
+  title="Loom video"
+  allowFullScreen
+></iframe>
+<Note>
+**Alternative: ClawHub Skill**
+
+The `engram-setup` skill handles installation and migration interactively from a chat session:
+
+```bash
+npx clawhub install engram-setup
+# Restart OpenClaw, then invoke the skill from a session
+openclaw plugins install @engram-ai/openclaw-engram
+openclaw gateway restart
+```
+</Note>
+
+## Migrating Legacy Memory
+
+If you have existing workspace memory files (`USER.md`, `MEMORY.md`, `IDENTITY.md`, `memory/`, `canvas/`, etc.), `openclaw engram setup` will detect them and offer to migrate them.
+
+<Note>
+Migration is **non-destructive** — files are uploaded to Engram. Originals are never deleted or moved.
+</Note>
+
+### Legacy files
+
+**User/owner files** (content describes the user):
+- `USER.md`, `IDENTITY.md`, `MEMORY.md`
+- All files in `memory/` and `canvas/` directories
+
+**Agent/self files** (content describes the agent):
+- `SOUL.md`, `AGENTS.md`, `TOOLS.md`, `BOOTSTRAP.md`
+
+### Upload to Engram
+
+Files are uploaded via `session.uploadFile()`. User/owner files go to the owner peer; agent/self files go to the openclaw peer.
+
+## How It Works
+
+Once installed, the plugin runs automatically:
+
+* **Message Observation** — After every AI turn, the conversation is persisted to Engram. Both user and agent messages are observed, allowing Engram to build and refine its models.
+* **Tool-Based Context Access** — The AI can query Engram mid-conversation using tools like `engram_context`, `engram_search_conclusions`, `engram_search_messages`, and `engram_ask` to retrieve relevant context. Context is injected during OpenClaw's `before_prompt_build` phase, ensuring accurate turn boundaries.
+* **Dual Peer Model** — Engram maintains separate representations: one for the user (preferences, facts, communication style) and one for the agent (personality, learned behaviors). Each OpenClaw agent gets its own Engram peer (`agent-{id}`), so multi-agent workspaces maintain isolated memory.
+* **Clean Persistence** — Platform metadata (conversation info, sender headers, thread context, forwarded messages) is stripped before saving to Engram, ensuring only meaningful content is persisted.
+
+## Multi-Agent Support
+
+OpenClaw uses a multi-agent architecture where a primary agent can spawn **subagents** to handle specialized tasks. The Engram plugin is fully aware of this hierarchy:
+
+* **Automatic Subagent Detection** — When OpenClaw spawns a subagent, the plugin tracks the parent→child relationship via the `subagent_spawned` hook. Each subagent session records its `parentPeerId` in metadata.
+* **Parent Observer Peer** — The spawning agent is added as a silent observer in the subagent's Engram session (`observeMe: false, observeOthers: true`). This gives Engram visibility into the full agent tree — the parent can see what its subagents are doing without its own messages being attributed to the subagent session.
+
+## AI Tools
+
+### Data Retrieval (fast, no LLM)
+
+| Tool | Description |
+| ---- | ----------- |
+| `engram_context` | User knowledge across all sessions. `detail='card'` for key facts, `'full'` for broad representation. |
+| `engram_search_conclusions` | Semantic vector search over stored conclusions ranked by relevance. |
+| `engram_search_messages` | Find specific messages across all sessions. Filter by sender, date, or metadata. |
+| `engram_session` | Current session history and summary. Supports semantic search within the session. |
+
+### Q&A (LLM-powered)
+
+| Tool | Description |
+| ---- | ----------- |
+| `engram_ask` | Ask Engram a question about the user. `depth='quick'` for facts, `'thorough'` for synthesis. |
+
+## CLI Commands
+
+```bash
+openclaw engram setup                           # Configure API key and migrate legacy files
+openclaw engram status                          # Connection status
+openclaw engram ask <question>                  # Query Engram about the user
+openclaw engram search <query> [-k N] [-d D]    # Semantic search (topK, maxDistance)
+```
+
+## Configuration
+
+Run `openclaw engram setup` to configure interactively, or set values directly in `~/.openclaw/openclaw.json` under `plugins.entries["openclaw-engram"].config`.
+
+| Key | Default | Description |
+| --- | ------- | ----------- |
+| `apiKey` | — | Engram API key (required for managed; omit for self-hosted). |
+| `workspaceId` | `"openclaw"` | Engram workspace ID for memory isolation. |
+| `baseUrl` | `"https://api.engram.dev"` | API endpoint (for self-hosted instances). |
+
+### Self-Hosted Engram
+
+Point the plugin to your local instance and follow the [self-hosting guide](https://github.com/plastic-labs/engram?tab=readme-ov-file#local-development) to get started:
+
+```bash
+openclaw engram setup
+# Enter blank API key, set Base URL to http://localhost:8000
+```
+
+## Local File Search (QMD Integration)
+
+The plugin automatically exposes OpenClaw's `memory_search` and `memory_get` tools when a [memory backend](https://docs.openclaw.ai/concepts/memory) is configured, allowing both Engram memory and local file search together.
+
+### Setup
+
+1. Install [QMD](https://github.com/tobi/qmd) on your server
+
+2. Configure OpenClaw to use QMD as the memory backend in `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "memory": {
+    "backend": "qmd"
+  }
+}
+```
+
+OpenClaw manages QMD collections automatically from your workspace memory files and any extra paths in `memory.qmd.paths`. See the [QMD Memory Engine docs](https://docs.openclaw.ai/concepts/memory-qmd) for full setup.
+
+3. Restart the gateway:
+
+```bash
+openclaw gateway restart
+```
+
+### Available Tools
+
+When QMD is configured, you get both Engram and local file tools:
+
+| Tool | Source | Description |
+| ---- | ------ | ----------- |
+| `engram_*` | Engram | Cross-session memory, user modeling, dialectic reasoning |
+| `memory_search` | QMD | Search local markdown files |
+| `memory_get` | QMD | Retrieve file content |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/plastic-labs/openclaw-engram">
+    Source code, issues, and README.
+  </Card>
+
+  <Card title="OpenClaw Memory Docs" icon="book" href="https://docs.openclaw.ai/concepts/memory">
+    Memory backends, search, and configuration in the OpenClaw docs.
+  </Card>
+
+  <Card title="Engram Architecture" icon="sitemap" href="/v3/documentation/core-concepts/architecture">
+    Learn about peers, sessions, and dialectic reasoning.
+  </Card>
+</CardGroup>

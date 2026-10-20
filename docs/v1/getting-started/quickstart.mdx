@@ -1,0 +1,133 @@
+---
+title: 'Quickstart'
+description: 'Start building with Engram in under 5 minutes'
+icon: 'bolt'
+---
+
+To make things easy, there's an instance of Engram up and running on a demo
+server at [https://demo.engram.dev](https://demo.engram.dev/docs). The python
+package defaults to this instance, so let's dive into how to get up and
+running!
+
+<Note>
+Begin with the demo server, then seamlessly transition to the production environment once you receive an invite code—simply add your API key and everything should function immediately.
+
+Sign-up for an invite code [here](https://plasticlabs.typeform.com/engraminvite)
+</Note>
+
+
+Install the Engram client SDK with the following commands:
+
+<CodeGroup>
+```bash Python
+pip install engram-ai
+```
+
+```bash NodeJS
+npm install engram-ai
+```
+</CodeGroup>
+
+First, import the `Client` from the package:
+
+<CodeGroup>
+```python Python
+from engram import Engram
+engram = Engram(
+    # This is the default and can be omitted
+    api_key=os.environ.get("ENGRAM_AUTH_TOKEN"),
+    # defaults to "local".
+    environment="demo",
+)
+```
+
+```javascript NodeJS
+import Engram from 'engram-ai';
+const engram = new Engram({
+  apiKey: process.env['ENGRAM_AUTH_TOKEN'], // This is the default and can be omitted
+  environment: 'demo', // defaults to 'local'
+});
+```
+</CodeGroup>
+
+Next, we want to register an application with the Engram client:
+
+<CodeGroup>
+
+```python Python
+app = engram.apps.get_or_create(
+    name="string",
+)
+```
+
+```javascript NodeJS
+const app = await engram.apps.getOrCreate({ name: 'string' });
+```
+
+</CodeGroup>
+
+
+This will create an application with the above name if it does not already exist or retrieve it if it does. After we have our application
+initialized, we can make a user with the following:
+
+<CodeGroup>
+
+```python Python
+user = engram.apps.users.create(app_id=app.id, name="User")
+```
+
+```javascript NodeJS
+const user = engram.apps.users.create(app.id, {name: "User" })
+```
+
+</CodeGroup>
+
+Now let's create a session for that application. Engram is a user context management system, so you can create sessions for users. Thus, a `user_id` is required.
+
+<CodeGroup>
+
+```python Python
+session = engram.apps.users.sessions.create(user.id, app.id)
+```
+
+```javascript NodeJS
+const session = engram.apps.users.sessions.create(app.id, user.id) -> Session
+```
+
+</CodeGroup>
+
+Let's add a user message and an AI message to that session:
+
+<CodeGroup>
+
+```python Python
+engram.apps.users.sessions.messages.create(session.id, app.id, user.id, content="Test", is_user=True)
+```
+
+```javascript NodeJS
+engram.apps.users.sessions.messages.create(app.id, user.id, session.id, { content: "Test", is_user: true })
+```
+
+</CodeGroup>
+
+You can also easily query Engram to get the session objects for that user with the following:
+
+<CodeGroup>
+
+```python Python
+async for session in engram.apps.users.list(app.id, user.id):
+  doSomethingWith(session)
+```
+
+```javascript NodeJS
+for await (const session of engram.apps.users.sessions.list(app.id, user.id)) {
+  doSomethingWith(session)
+}
+```
+
+</CodeGroup>
+
+
+This is a super simple overview of how to get up and running with the Engram SDK. We covered the basic methods for reading and writing from the hosted storage service. Next, we'll cover alternative forms of hosting Engram.
+
+For a more detailed look at the SDK check out the SDK reference [here](/v1/api-reference).

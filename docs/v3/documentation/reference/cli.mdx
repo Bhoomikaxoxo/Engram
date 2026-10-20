@@ -1,0 +1,269 @@
+---
+title: 'CLI Reference'
+description: 'Command-line interface for Engram — inspect workspaces, peers, sessions, and memory from your terminal'
+icon: 'terminal'
+---
+
+import CliCommands from "/snippets/cli-commands.mdx";
+
+## Install
+
+<CodeGroup>
+```bash uv (recommended)
+uv tool install engram-cli
+```
+
+```bash uvx (ephemeral)
+uvx engram-cli
+```
+</CodeGroup>
+
+This only installs the `engram` command. It does not start a server. Use `engram start --setup` (Docker + an LLM provider key) when you want a local stack.
+
+## Quick Start
+
+```bash
+engram init                 # Engram API key or browser login + server URL (talk *to* Engram)
+engram start --setup basic  # local stack: LLM provider key + Docker (not set by init)
+engram doctor               # verify your config + connectivity
+engram                      # show banner + command list
+```
+
+`engram init` authenticates the CLI against a Engram server. It does **not** configure the LLM key a local stack needs — that is `engram start --setup`.
+
+## Local stack
+
+`engram start --setup basic` is the fastest way to run Engram on your machine. It does **not** require cloning the Engram repo. The wizard prompts for an LLM provider and API key, writes them into the profile `.env`, pulls `ghcr.io/plastic-labs/engram:latest`, **pins that digest**, and starts API + deriver + Postgres + Redis via Docker.
+
+Default profile is `local` (`--profile` / `ENGRAM_PROFILE`). First start copies the image `config.toml.example` into the profile directory; later starts leave that file alone so your edits persist — including when you re-pin the image. Delete `config.toml` yourself if you want a fresh copy from a new image. Pass `--image` to pin a different tag or digest. Ports bind to `127.0.0.1`; if 8000/5432/6379 are taken, the CLI remaps them (or pass `--api-port` / `--db-port` / `--redis-port`). Auth is off (`AUTH_USE_AUTH=false`).
+
+Pass `--setup basic` or `--setup advanced` for an interactive wizard that writes curated LLM/feature overrides into the profile `.env` (environment variables win over `config.toml`). This is TTY-only. `basic` covers provider and chat model; `advanced` also covers embeddings, deriver/dialectic models, dreams, and deriver flush. Re-running `--setup` while the stack is up recreates the API and deriver containers.
+
+This does **not** change `environmentUrl` in the shared config file. To talk to the local stack:
+
+```bash
+ENGRAM_BASE_URL=http://127.0.0.1:8000 engram workspace list
+engram init --base-url http://127.0.0.1:8000   # persist local as the CLI default
+```
+
+```bash
+engram start --setup basic
+engram start --setup advanced
+LLM_OPENAI_API_KEY=sk-... engram start   # skip the wizard if the key is already in the env
+engram status
+engram stop            # keep data
+engram stop --wipe     # also delete volumes
+```
+
+To **develop the server** (live reload, from-source image), see [Local Environment Setup](/v3/contributing/self-hosting).
+
+## Configuration
+
+The CLI resolves config in this order: **flag → env var → config file → default**.
+
+| Value       | File key          | Env var                | Flag                   | Persisted? |
+|-------------|-------------------|------------------------|------------------------|------------|
+| API key     | `apiKey`          | `ENGRAM_API_KEY`       | —                      | Yes        |
+| API URL     | `environmentUrl`  | `ENGRAM_BASE_URL`      | —                      | Yes        |
+| Workspace   | —                 | `ENGRAM_WORKSPACE_ID`  | `-w` / `--workspace`   | No         |
+| Peer        | —                 | `ENGRAM_PEER_ID`       | `-p` / `--peer`        | No         |
+| Session     | —                 | `ENGRAM_SESSION_ID`    | `-s` / `--session`     | No         |
+| JSON output | —                 | `ENGRAM_JSON`          | `--json`               | No         |
+| Update nag  | —                 | `ENGRAM_NO_UPDATE_CHECK` | —                    | No         |
+| Local stack | —                 | `ENGRAM_PROFILE`       | `--profile`            | No         |
+
+### Persisted config
+
+The CLI shares `~/.engram/config.json` with sibling Engram tools. It owns
+`apiKey` and `environmentUrl` at the top level — everything else (`hosts`,
+`sessions`, etc.) is written by other tools and left untouched on save.
+On managed servers that advertise the device grant in OAuth metadata,
+`engram init` can log you in via the browser; tokens auto-refresh
+and are stored under `oauth` without deleting a shared `apiKey`.
+
+```json
+{
+  "apiKey": "hch-v3-...",
+  "environmentUrl": "https://api.engram.dev",
+  "hosts": { "claude_code": { "...": "..." } }
+}
+```
+<Info>
+Per-command targeting (workspace / peer / session) is handled via `-w` / `-p` / `-s`
+flags or `ENGRAM_*` env vars. **Not** persisted as CLI defaults. This is
+deliberate: every invocation is explicit about what it operates on.
+</Info>
+
+### Runtime overrides
+
+Workspace, peer, and session targeting are **per-command only** — pass flags or
+`ENGRAM_*` env vars on every invocation.
+
+```bash
+# Per-command flags
+engram peer card -w prod -p user
+
+# Or export once per shell
+export ENGRAM_WORKSPACE_ID=prod
+export ENGRAM_PEER_ID=user
+engram peer card
+
+# One-off against a different server
+ENGRAM_BASE_URL=http://localhost:8000 engram workspace list
+
+# CI/CD — env vars only, no config file needed
+export ENGRAM_API_KEY=hch-v3-xxx
+export ENGRAM_BASE_URL=https://api.engram.dev
+engram workspace list
+```
+
+## Output & exit codes
+
+Every command adapts its output to the context:
+
+- **TTY** — human-readable tables via Rich.
+- **Piped or redirected** — JSON automatically (detected via `isatty`).
+- **`--json` flag / `ENGRAM_JSON=1`** — force JSON regardless of terminal.
+
+Interactive sessions may print a one-line upgrade hint on stderr at most once a day when a newer `engram-cli` is on PyPI (`uv tool upgrade engram-cli`). JSON/piped output skips it; set `ENGRAM_NO_UPDATE_CHECK=1` to disable it.
+
+Collection commands emit JSON arrays; single-resource commands emit JSON objects. Errors are always structured:
+
+```json
+{
+  "error": {
+    "code": "PEER_NOT_FOUND",
+    "message": "Peer 'abc' not found in workspace 'my-ws'",
+    "details": {"workspace_id": "my-ws", "peer_id": "abc"}
+  }
+}
+```
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | Success |
+| `1` | Client error (bad input, resource not found) |
+| `2` | Server error |
+| `3` | Auth error (missing or invalid API key) |
+
+CI pipelines and agent runtimes can branch on these without parsing stderr.
+
+## Command reference
+
+<CliCommands />
+
+<Note>
+  `engram peer chat` covers peer chat only. [Workspace chat](/v3/documentation/features/chat#workspace-chat) has no CLI command yet; use the API or SDKs.
+</Note>
+
+## Workflows
+
+### Inspect an unfamiliar workspace
+
+When you pick up a workspace and need to orient — start broad, narrow to the peer and session you care about.
+
+<Steps>
+  <Step title="Survey the workspace">
+    ```bash
+    engram workspace inspect --json
+    engram peer list --json
+    ```
+  </Step>
+  <Step title="Inspect a specific peer">
+    ```bash
+    engram peer inspect <peer_id> --json
+    engram peer card <peer_id> --json
+    ```
+  </Step>
+  <Step title="Review the peer's memory">
+    ```bash
+    engram conclusion list --observer <peer_id> --json
+    engram conclusion search "topic" --observer <peer_id> --json
+    ```
+  </Step>
+  <Step title="Debug a session">
+    ```bash
+    engram session inspect <session_id> --json
+    engram session view <session_id> --last 20
+    engram session context <session_id> --json
+    engram session summaries <session_id> --json
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  `engram session context` shows exactly what an agent would receive at inference time — check it before `engram peer chat` if a response surprises you. `engram session view` shows the raw transcript that context was built from; it prints content verbatim, so tag-delimited and multi-line messages appear exactly as stored.
+</Tip>
+
+### A peer isn't learning
+
+If new messages aren't producing new conclusions, work down the diagnostic ladder.
+
+```bash
+# Is observation enabled for this peer?
+engram peer inspect <peer_id> --json | jq '.configuration'
+
+# Is the deriver actually processing?
+engram workspace queue-status --json
+
+# Do any conclusions exist at all? Any for the expected topic?
+engram conclusion list --observer <peer_id> --json
+engram conclusion search "expected topic" --observer <peer_id> --json
+```
+
+### Session context looks wrong
+
+When an agent's responses don't reflect what you expect it to know.
+
+```bash
+engram session context <session_id> --json
+engram session summaries <session_id> --json
+engram session view <session_id> --last 50
+```
+
+### Dialectic returns bad answers
+
+When `engram peer chat`, `engram workspace chat`, or the dialectic API is hallucinating or missing context.
+
+```bash
+# What does the peer card actually say?
+engram peer card <peer_id> --json
+
+# Any conclusions for this topic?
+engram conclusion search "topic" --observer <peer_id> --json
+
+# Reproduce the query against the CLI
+engram peer chat <peer_id> "what do you know about X?" --json
+
+# Confine recall to a named scope
+engram peer chat <peer_id> "what happened here?" --scope my-project --json
+
+# Cross-peer question — not tied to one peer
+engram workspace chat "what themes show up across peers?" --json
+engram workspace chat "what happened in this project?" --scope my-project --json
+```
+
+## Scripting & automation
+
+Pipe commands into `jq` for inline transforms, or set `ENGRAM_*` env vars for a CI/CD environment with no config file:
+
+```bash
+# Pipe to jq
+engram peer list --json | jq '.[].id'
+engram workspace inspect --json | jq '.peers'
+
+# Machine-parseable health check — exit code for CI, details for logs
+engram doctor --json
+
+# CI/CD — env vars only, no ~/.engram/config.json
+export ENGRAM_API_KEY=hch-v3-xxx
+export ENGRAM_BASE_URL=https://api.engram.dev
+engram workspace list
+```
+
+Non-interactive onboarding:
+
+```bash
+# Pre-seed via flags / env vars; init still prompts for anything missing
+ENGRAM_API_KEY=hch-v3-xxx engram init --base-url https://api.engram.dev
+```

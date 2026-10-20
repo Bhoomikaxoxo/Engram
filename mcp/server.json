@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.plastic-labs/engram",
+  "title": "Engram",
+  "description": "Memory that reasons: continual learning for stateful agents. Better context, fewer tokens.",
+  "version": "3.2.0",
+  "repository": {
+    "url": "https://github.com/plastic-labs/engram",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.engram.dev",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Authorization header for Engram. Use either an OAuth access token or a Engram API key from https://app.engram.dev (API keys start with hch-). Send as: Bearer <token>.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "X-Engram-Workspace-ID",
+          "description": "Optional. Default Engram workspace for tool calls. When set, it fills workspace_id on tools.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

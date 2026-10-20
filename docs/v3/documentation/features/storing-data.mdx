@@ -1,0 +1,61 @@
+---
+title: Storing Data
+description: "Store Data in Engram to Generate Memories and Insights"
+icon: "memory"
+---
+
+The most basic building block of Engram's data model is the `Message` object.
+A `Message` is sent by a `Peer` and saved in a `Session`
+
+
+<CodeGroup>
+  ```python Python
+  from engram import Engram
+
+  engram = Engram()
+
+  peer = engram.peer("sample-peer")
+
+  session = engram.session("sample-session")
+
+  message = peer.message("Hello, world!")
+
+  session.add_messages([message])
+  ```
+
+  ```typescript TypeScript
+  import { Engram } from '@engram-ai/sdk';
+
+  const engram = new Engram({});
+
+  const peer = await engram.peer('sample-peer');
+
+  const session = await engram.session('sample-session');
+
+  const message = peer.message('Hello, world!');
+
+  await session.addMessages([message]);
+```
+</CodeGroup>
+
+Once a `Message` is saved in Engram, it will kick off a background task that
+looks at the new data to generate insights about the `Peer` that sent the `Message`
+
+This is the default behavior of Engram and can be turned off by [configuring the
+Peer or Session](/v3/documentation/features/advanced/reasoning-configuration)
+
+This pattern of having a Peer, Session, and Messages is highly flexible and
+works for many different use cases and agent setups. Some use cases may only
+need a single Peer, but many Sessions. Others will only use a single `Session`
+for their entire app. These are flexible components that work in any situation.
+
+## Chat Bots
+
+A common use case for Engram to is to build a chatbot like ChatGPT or Claude.
+In this case you can simply
+
+- Make a `Peer` for the User
+- Make a `Peer` for the AI
+
+Then you can make a `Session` for each thread of conversation and save
+`Messages` from the user and assistant in each turn of conversation
